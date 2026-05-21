@@ -1176,13 +1176,14 @@ class CombinedCalculatorApp:
     def edition_calculate(self):
         try:
             txt = self.edition_input.get().strip()
-            txt = self.edition_input2.get().strip()
-            if not txt:
-                self.edition_result.set("⚠️ Введите тираж")
+            txt2 = self.edition_input2.get().strip()
+            if not txt or not txt2:
+                self.edition_result.set("⚠️ Введите значение")
                 return
             edition = int(txt)
-            if edition <= 0:
-                self.edition_result.set("⚠️ Тираж должен быть больше 0")
+            edition2 = int(txt2)
+            if edition <= 0 or edition2 <= 0:
+                self.edition_result.set("⚠️ Значение должно быть больше 0")
                 return
             packs_needed = edition / 5000
             packs_int = math.ceil(packs_needed)
