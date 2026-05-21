@@ -1146,8 +1146,8 @@ class CombinedCalculatorApp:
         f = ttk.Frame(parent, padding="30")
         f.pack(fill='both', expand=True)
         ttk.Label(f, text="Калькулятор тиража", font=("Arial",14,"bold")).pack(pady=(0,20))
-        ttk.Label(f, text="Расчет минимального количества пачек на тираж \nРезультат округляется до ЧЕТНОГО числа В БОЛЬШУЮ сторону",
-                  font=("Arial",9), foreground="gray", justify=tk.CENTER).pack(pady=(0,20))
+        ttk.Label(f, text="Проверка раскладки", font=("Arial",14,"bold")).pack(pady=(0,1))
+        ttk.Label(f, text="Расчет минимального количества пачек на тираж \nРезультат округляется до ЧЕТНОГО числа В БОЛЬШУЮ сторону",font=("Arial",9), foreground="gray", justify=tk.CENTER).pack(pady=(0,20))
         inp = ttk.Frame(f)
         inp.pack(pady=10)
 
