@@ -1138,6 +1138,7 @@ class CombinedCalculatorApp:
         tab = ttk.Frame(self.notebook)
         self.notebook.add(tab, text='Расчет тиража')
         self.edition_input = tk.StringVar()
+        self.edition_input2 = tk.StringVar()
         self.edition_result = tk.StringVar(value="Минимальное количество пачек: -")
         self.setup_edition_ui(tab)
     
@@ -1149,9 +1150,18 @@ class CombinedCalculatorApp:
                   font=("Arial",9), foreground="gray", justify=tk.CENTER).pack(pady=(0,20))
         inp = ttk.Frame(f)
         inp.pack(pady=10)
-        ttk.Label(inp, text="Введите тираж (кол-во пачек):", font=("Arial",10)).pack(side=tk.LEFT, padx=(0,10))
+
+        ttk.Label(inp, text="Введите общий тираж (кол-во пачек):", font=("Arial",10)).pack(side=tk.LEFT, padx=(0,10))
         entry = ttk.Entry(inp, textvariable=self.edition_input, width=15, font=("Arial",11))
-        entry.pack(side=tk.LEFT)
+        entry.pack(side=tk.LEFT) 
+
+        inp2 = ttk.Frame(f)
+        inp2.pack(pady=1)
+    
+        ttk.Label(inp2, text="Введите кол-во знаков на листе:       ", font=("Arial",10)).pack(side=tk.LEFT, padx=(0,10))
+        entry2 = ttk.Entry(inp2, textvariable=self.edition_input2, width=15, font=("Arial",11))
+        entry2.pack(side=tk.LEFT)
+        
         def validate_edition(char): return char.isdigit() or char == ""
         entry.config(validate="key", validatecommand=(entry.register(validate_edition), '%P'))
         ttk.Button(f, text="🧮 Рассчитать", command=self.edition_calculate, width=20).pack(pady=20)
@@ -1166,6 +1176,7 @@ class CombinedCalculatorApp:
     def edition_calculate(self):
         try:
             txt = self.edition_input.get().strip()
+            txt = self.edition_input2.get().strip()
             if not txt:
                 self.edition_result.set("⚠️ Введите тираж")
                 return
