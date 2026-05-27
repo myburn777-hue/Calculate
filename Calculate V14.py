@@ -171,14 +171,14 @@ def monitor_selection():
 class CombinedCalculatorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Калькулятор by Kirill V14")
+        self.root.title("Калькулятор by Kirill V15")
         
         # Размеры для каждой вкладки
         self.tab_sizes = {
             0: (600, 570),   # Ножи
             1: (1200, 1050),  # Вкладыши
             2: (500, 330),   # % Выгоды
-            3: (700, 500)    # Расчет тиража
+            3: (700, 550)    # Расчет тиража
         }
         
         self.root.geometry("600x570")
@@ -1193,12 +1193,22 @@ class CombinedCalculatorApp:
             sheets = math.ceil(edition / packs_int)
             total_packs = sheets * packs_int
             result = f"📦 Минимальное количество пачек: {packs_int} шт. на лист"
-            if packs_int != orig:
-               result += f" (округлено с {orig} до {packs_int})"
+            dobavlenie = packs_int - edition2
+            dobavlenie = str(dobavlenie)
+            dobavlenie2 = str(packs_int)
+            if edition2 < packs_int:
+            
+             result += f"\n!!! слишком мало пачек, дабавьте минимум +" + dobavlenie + " шт !!!" 
+            else:
+             result += f"\nКоличество пачек верное"   
+
             result += f"\n\n📦 Тираж: {edition:,} пачек".replace(",", " ")
             result += f"\n📄 Листов: {sheets:,} штук".replace(",", " ")
             result += f"\n✅ Итого : {total_packs:,} пачек".replace(",", " ")
             self.edition_result.set(result)
+
+            
+            
         except ValueError:
             self.edition_result.set("❌ Ошибка! Введите целое число")
         except Exception as e:
