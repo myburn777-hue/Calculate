@@ -409,7 +409,9 @@ class CombinedCalculatorApp:
         self.result_entry = ttk.Entry(result_frame, textvariable=self.result_value, font=("Arial",14,"bold"), foreground="green", state='readonly', width=20, justify='left')
         self.result_entry.grid(row=1, column=0, sticky=tk.W, pady=(5,0))
         self.create_context_menu(self.result_entry)
-        self.bind_hotkeys()
+        # Привязываем Ctrl+C только к этому Entry
+        self.result_entry.bind('<Control-c>', self.copy_result)
+        self.result_entry.bind('<Control-C>', self.copy_result)
         
         selection_frame = ttk.LabelFrame(main_frame, text="Выберите пробивку", padding="10")
         selection_frame.grid(row=4, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0,15))
@@ -449,15 +451,8 @@ class CombinedCalculatorApp:
         selection_frame.columnconfigure(3, weight=1)
         self.knife_calculate()
     
-    def bind_hotkeys(self):
-        self.root.bind('<Control-c>', self.copy_result)
-        self.root.bind('<Control-C>', self.copy_result)
-        if self.result_entry:
-            self.result_entry.bind('<Control-c>', self.copy_result)
-            self.result_entry.bind('<Control-C>', self.copy_result)
-    
     def copy_result(self, event=None):
-        if self.result_entry and self.current_tab == 0:
+        if self.result_entry:
             try:
                 selected_text = self.result_entry.selection_get()
             except tk.TclError:
@@ -556,45 +551,46 @@ class CombinedCalculatorApp:
         except ValueError:
             self.result_value.set("Ошибка: введите число")
     
-    # ===== ВКЛАДКА "Расчет вкладышей" (исправленная ориентация форматов) =====
+    # ===== ВКЛАДКА "Расчет вкладышей" =====
     def create_inlay_calculator_tab(self):
         inlay_tab = ttk.Frame(self.notebook)
         self.notebook.add(inlay_tab, text='Расчет вкладышей')
         
-        # Стандартные форматы бумаги: ключ "высотахширина", значение (ширина, высота)
+        # Стандартные форматы бумаги
         self.paper_formats = {
-            "620x940": (940, 620),   # ширина 940, высота 620
+            "620x940": (940, 620),
             "640x900": (900, 640),
             "700x1000": (1000, 700),
             "720x1040": (1040, 720)
         }
         
-        # Переменные для выбора формата
-        self.selected_format = tk.StringVar(value="620x940")
+        # Стандартные форматы вкладышей (ISO 216)
+        self.inlay_standart_formats = {
+            "A0": (841, 1189),
+            "A1": (594, 841),
+            "A2": (420, 594),
+            "A3": (297, 420),
+            "A4": (210, 297),
+            "A5": (148, 210),
+            "A6": (105, 148),
+            "A7": (74, 105),
+            "A8": (52, 74)
+        }
         
-        # Переменные для произвольного размера картона
+        self.selected_format = tk.StringVar(value="620x940")
         self.custom_width = tk.StringVar()
         self.custom_height = tk.StringVar()
         self.use_custom = tk.BooleanVar(value=False)
-        
-        # Переменные для вкладыша
         self.inlay_width = tk.StringVar()
         self.inlay_height = tk.StringVar()
+        self.selected_inlay_format = tk.StringVar()
         
-        # Тип печати и оборота
         self.print_type = tk.StringVar(value="односторонняя")
-        
-        # Цветность (цветная/черно-белая)
-        self.color_mode = tk.StringVar(value="color")  # "color" или "bw"
-        
-        # Опции оптимизации
+        self.color_mode = tk.StringVar(value="color")
         self.auto_rotate = tk.BooleanVar(value=True)
         self.auto_calculate_all = tk.BooleanVar(value=True)
-        
-        # Режим сжатия до формата
         self.shrink_mode = tk.BooleanVar(value=False)
         
-        # Переменные для вывода результатов (краткие)
         self.total_size_text = tk.StringVar(value="Общий размер вкладышей: -")
         self.best_layout_text = tk.StringVar(value="Оптимальное расположение: -")
         self.best_paper_text = tk.StringVar(value="Лучший формат: -")
@@ -602,15 +598,12 @@ class CombinedCalculatorApp:
         self.setup_inlay_ui(inlay_tab)
     
     def setup_inlay_ui(self, parent):
-        # Главный контейнер с двумя панелями
         main_panel = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
         main_panel.pack(fill='both', expand=True)
         
-        # Левая панель (элементы управления) с прокруткой
         left_frame = ttk.Frame(main_panel)
         main_panel.add(left_frame, weight=1)
         
-        # Создаем Canvas и Scrollbar для левой панели
         self.left_canvas = tk.Canvas(left_frame, highlightthickness=0)
         left_scrollbar = ttk.Scrollbar(left_frame, orient="vertical", command=self.left_canvas.yview)
         self.left_scrollable = ttk.Frame(self.left_canvas)
@@ -622,15 +615,12 @@ class CombinedCalculatorApp:
         
         self.left_canvas.create_window((0, 0), window=self.left_scrollable, anchor="nw")
         self.left_canvas.configure(yscrollcommand=left_scrollbar.set)
-        
         self.left_canvas.pack(side="left", fill="both", expand=True)
         left_scrollbar.pack(side="right", fill="y")
         
-        # Правая панель (результаты)
         right_frame = ttk.Frame(main_panel)
         main_panel.add(right_frame, weight=2)
         
-        # В правой панели размещаем текстовое поле с прокруткой
         right_container = ttk.Frame(right_frame)
         right_container.pack(fill='both', expand=True, padx=5, pady=5)
         
@@ -642,22 +632,23 @@ class CombinedCalculatorApp:
         self.result_textbox.pack(side="left", fill="both", expand=True)
         right_scrollbar.config(command=self.result_textbox.yview)
         
-        # ----- Заполняем левую панель элементами управления -----
-        # Заголовок
+        # Горячие клавиши для текстового поля (стандартные Ctrl+C работают, добавляем Ctrl+A)
+        def select_all_text(event):
+            self.result_textbox.tag_add('sel', '1.0', 'end')
+            return 'break'
+        self.result_textbox.bind('<Control-a>', select_all_text)
+        self.result_textbox.bind('<Control-A>', select_all_text)
+        # Ctrl+C стандартно работает, не перехватываем его
+        
         title_label = ttk.Label(self.left_scrollable, text="Калькулятор размещения вкладышей", font=("Arial",14,"bold"))
         title_label.pack(anchor='w', pady=10, padx=10)
         
-        # --- Выбор формата бумаги ---
         format_frame = ttk.LabelFrame(self.left_scrollable, text="Формат бумаги", padding=10)
         format_frame.pack(fill="x", padx=10, pady=5)
-        
-        # Стандартные форматы
         ttk.Label(format_frame, text="Стандартные форматы:", font=("Arial",9,"bold")).pack(anchor="w")
         for name in self.paper_formats.keys():
             rb = ttk.Radiobutton(format_frame, text=name, variable=self.selected_format, value=name)
             rb.pack(anchor="w", padx=20)
-        
-        # Произвольный размер
         ttk.Checkbutton(format_frame, text="Произвольный размер", variable=self.use_custom, command=self.toggle_custom_format).pack(anchor="w", pady=(10,5))
         
         custom_frame = ttk.Frame(format_frame)
@@ -669,64 +660,71 @@ class CombinedCalculatorApp:
         self.custom_height_entry = ttk.Entry(custom_frame, textvariable=self.custom_height, width=10, state='disabled')
         self.custom_height_entry.grid(row=1, column=1, padx=5, pady=2)
         
-        # Ввод размера вкладыша
         inlay_frame = ttk.LabelFrame(self.left_scrollable, text="Размер вкладыша (в мм)", padding=10)
         inlay_frame.pack(fill="x", padx=10, pady=5)
+        
+        format_sel_frame = ttk.Frame(inlay_frame)
+        format_sel_frame.pack(fill="x", pady=5)
+        ttk.Label(format_sel_frame, text="Стандартный формат:").pack(side=tk.LEFT, padx=(0,5))
+        self.inlay_format_combobox = ttk.Combobox(format_sel_frame, textvariable=self.selected_inlay_format,
+                                                  values=[""] + list(self.inlay_standart_formats.keys()),
+                                                  state="readonly", width=10)
+        self.inlay_format_combobox.pack(side=tk.LEFT, padx=5)
+        self.inlay_format_combobox.bind("<<ComboboxSelected>>", self.on_inlay_format_selected)
+        self.inlay_format_size_label = ttk.Label(format_sel_frame, text="", foreground="blue")
+        self.inlay_format_size_label.pack(side=tk.LEFT, padx=10)
+        
         wf = ttk.Frame(inlay_frame); wf.pack(fill="x", pady=5)
         ttk.Label(wf, text="Ширина:").pack(side="left", padx=5)
-        ttk.Entry(wf, textvariable=self.inlay_width, width=10).pack(side="left")
+        self.inlay_width_entry = ttk.Entry(wf, textvariable=self.inlay_width, width=10)
+        self.inlay_width_entry.pack(side="left")
         ttk.Label(wf, text="мм").pack(side="left", padx=5)
+        
         hf = ttk.Frame(inlay_frame); hf.pack(fill="x", pady=5)
         ttk.Label(hf, text="Высота:").pack(side="left", padx=5)
-        ttk.Entry(hf, textvariable=self.inlay_height, width=10).pack(side="left")
+        self.inlay_height_entry = ttk.Entry(hf, textvariable=self.inlay_height, width=10)
+        self.inlay_height_entry.pack(side="left")
         ttk.Label(hf, text="мм").pack(side="left", padx=5)
         
-        # Тип печати и оборота
+        self.inlay_width_entry.bind('<KeyRelease>', self.on_inlay_manual_change)
+        self.inlay_height_entry.bind('<KeyRelease>', self.on_inlay_manual_change)
+        
         print_frame = ttk.LabelFrame(self.left_scrollable, text="Тип печати и оборота", padding=10)
         print_frame.pack(fill="x", padx=10, pady=5)
         ttk.Radiobutton(print_frame, text="📄 Односторонняя", variable=self.print_type, value="односторонняя").pack(anchor="w",pady=2)
-        ttk.Radiobutton(print_frame, text="🔄 Двусторонняя - ЧУЖОЙ оборот (переворот листа целиком)", variable=self.print_type, value="двусторонняя_чужой").pack(anchor="w",pady=2)
-        ttk.Radiobutton(print_frame, text="⚡ Двусторонняя - СВОЙ оборот (лицо к лицу, требуется ЧЕТНОЕ количество по ширине)", variable=self.print_type, value="двусторонняя_свой").pack(anchor="w",pady=2)
+        ttk.Radiobutton(print_frame, text="🔄 Двусторонняя - ЧУЖОЙ оборот", variable=self.print_type, value="двусторонняя_чужой").pack(anchor="w",pady=2)
+        ttk.Radiobutton(print_frame, text="⚡ Двусторонняя - СВОЙ оборот", variable=self.print_type, value="двусторонняя_свой").pack(anchor="w",pady=2)
         
-        # Цветность
         color_frame = ttk.LabelFrame(self.left_scrollable, text="Тип печати по цвету", padding=10)
         color_frame.pack(fill="x", padx=10, pady=5)
         ttk.Radiobutton(color_frame, text="🎨 Цветная (с припусками +4 мм)", variable=self.color_mode, value="color").pack(anchor="w",pady=2)
         ttk.Radiobutton(color_frame, text="⚫ Черно-белая (без припусков)", variable=self.color_mode, value="bw").pack(anchor="w",pady=2)
         
-        # Опции оптимизации
         opt_frame = ttk.LabelFrame(self.left_scrollable, text="Опции оптимизации", padding=10)
         opt_frame.pack(fill="x", padx=10, pady=5)
         ttk.Checkbutton(opt_frame, text="🔄 Автоматически переворачивать вкладыши", variable=self.auto_rotate).pack(anchor="w",pady=2)
         ttk.Checkbutton(opt_frame, text="📊 Автоматически рассчитывать все форматы", variable=self.auto_calculate_all).pack(anchor="w",pady=2)
         ttk.Checkbutton(opt_frame, text="📦 Сжать до формата (уменьшить отступы/припуски)", variable=self.shrink_mode).pack(anchor="w",pady=2)
         
-        # Кнопка расчета
         ttk.Button(self.left_scrollable, text="🧮 Рассчитать", command=self.inlay_calculate).pack(pady=10)
         
-        # Краткие результаты (будут обновляться после расчета)
         summary_frame = ttk.LabelFrame(self.left_scrollable, text="Краткие результаты", padding=10)
         summary_frame.pack(fill="x", padx=10, pady=5)
-        
         ttk.Label(summary_frame, text="🏆 Лучший формат бумаги:", font=("Arial",9,"bold")).pack(anchor="w")
         self.best_paper_label = ttk.Label(summary_frame, textvariable=self.best_paper_text, foreground="green")
         self.best_paper_label.pack(anchor="w", padx=10)
-        
         ttk.Label(summary_frame, text="📐 Оптимальное расположение:", font=("Arial",9,"bold")).pack(anchor="w", pady=(5,0))
         self.best_layout_label = ttk.Label(summary_frame, textvariable=self.best_layout_text)
         self.best_layout_label.pack(anchor="w", padx=10)
-        
         ttk.Label(summary_frame, text="📏 Общий размер вкладышей:", font=("Arial",9,"bold")).pack(anchor="w", pady=(5,0))
         self.total_size_label = ttk.Label(summary_frame, textvariable=self.total_size_text)
         self.total_size_label.pack(anchor="w", padx=10)
         
-        # Настраиваем прокрутку колесиком мыши
         def on_mousewheel(event):
             self.left_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
         self.left_canvas.bind_all("<MouseWheel>", on_mousewheel)
     
     def toggle_custom_format(self):
-        """Активирует/деактивирует поля ввода произвольного размера"""
         if self.use_custom.get():
             self.custom_width_entry.config(state='normal')
             self.custom_height_entry.config(state='normal')
@@ -734,29 +732,51 @@ class CombinedCalculatorApp:
             self.custom_width_entry.config(state='disabled')
             self.custom_height_entry.config(state='disabled')
     
+    def on_inlay_format_selected(self, event=None):
+        fmt = self.selected_inlay_format.get()
+        if fmt in self.inlay_standart_formats:
+            w, h = self.inlay_standart_formats[fmt]
+            self.inlay_width.set(str(w))
+            self.inlay_height.set(str(h))
+            self.inlay_format_size_label.config(text=f"{w}×{h} мм")
+        else:
+            self.inlay_format_size_label.config(text="")
+    
+    def on_inlay_manual_change(self, event=None):
+        try:
+            w = float(self.inlay_width.get().replace(',','.'))
+            h = float(self.inlay_height.get().replace(',','.'))
+        except ValueError:
+            if self.selected_inlay_format.get():
+                self.selected_inlay_format.set("")
+                self.inlay_format_size_label.config(text="")
+            return
+        found = None
+        for fmt, (fw, fh) in self.inlay_standart_formats.items():
+            if abs(w - fw) < 0.5 and abs(h - fh) < 0.5:
+                found = fmt
+                break
+        if found:
+            if self.selected_inlay_format.get() != found:
+                self.selected_inlay_format.set(found)
+                self.inlay_format_size_label.config(text=f"{fw}×{fh} мм")
+        else:
+            if self.selected_inlay_format.get():
+                self.selected_inlay_format.set("")
+                self.inlay_format_size_label.config(text="")
+    
     def inlay_calculate_layout(self, paper_width, paper_height, inlay_h, inlay_w, rotated=False, 
                                color_mode="color", top_bottom_margin=25, side_margin=10, 
                                extra_margin=4, height_reduction=0):
-        """
-        Универсальная функция расчета размещения.
-        paper_width, paper_height - размеры листа
-        inlay_h, inlay_w - исходные размеры вкладыша
-        rotated - флаг поворота
-        color_mode - "color" или "bw"
-        top_bottom_margin - суммарный отступ сверху и снизу (по умолчанию 25)
-        side_margin - суммарный отступ слева и справа (по умолчанию 10)
-        extra_margin - дополнительный припуск для цветной печати (по умолчанию 4)
-        height_reduction - уменьшение высоты для черно-белой печати при сжатии (по умолчанию 0)
-        """
         available_width = paper_width - side_margin
         available_height = paper_height - top_bottom_margin
         
         if color_mode == "color":
             inlay_w_eff = inlay_w + extra_margin
             inlay_h_eff = inlay_h + extra_margin
-        else:  # черно-белая
+        else:
             inlay_w_eff = inlay_w
-            inlay_h_eff = inlay_h - height_reduction  # уменьшаем высоту для сжатия
+            inlay_h_eff = inlay_h - height_reduction
         
         if rotated:
             w_eff = inlay_h_eff
@@ -769,7 +789,6 @@ class CombinedCalculatorApp:
         count_height = int(available_height // h_eff) if h_eff > 0 else 0
         
         total_count = count_width * count_height
-        
         total_width = count_width * w_eff
         total_height = count_height * h_eff
         
@@ -777,7 +796,6 @@ class CombinedCalculatorApp:
         available_area = available_width * available_height
         efficiency = (used_area / available_area * 100) if available_area > 0 else 0
         
-        # Для отчета сохраняем исходные размеры без припусков для отображения ориентации
         if rotated:
             orientation = f"{inlay_w}×{inlay_h} мм"
         else:
@@ -808,7 +826,6 @@ class CombinedCalculatorApp:
         }
     
     def calculate_final_count(self, layout, print_type):
-        """Рассчитывает итоговое количество вкладышей с учетом типа печати и оборота"""
         total = layout['total_count']
         cw = layout['count_width']
         ch = layout['count_height']
@@ -826,7 +843,6 @@ class CombinedCalculatorApp:
         try:
             self.result_textbox.delete(1.0, tk.END)
             
-            # Получаем размеры вкладыша
             w = float(self.inlay_width.get().replace(",","."))
             h = float(self.inlay_height.get().replace(",","."))
             if w<=0 or h<=0:
@@ -836,15 +852,12 @@ class CombinedCalculatorApp:
             color = self.color_mode.get()
             shrink = self.shrink_mode.get()
             
-            # Определяем, какой формат бумаги используем
             if self.use_custom.get():
-                # Произвольный размер
                 try:
                     pw = float(self.custom_width.get().replace(",","."))
                     ph = float(self.custom_height.get().replace(",","."))
                     if pw <= 0 or ph <= 0:
                         raise ValueError("Размеры листа должны быть положительными")
-                    # Проверка ограничений
                     if ph < 360:
                         messagebox.showerror("Ошибка", "Высота листа не может быть меньше 360 мм")
                         return
@@ -854,40 +867,30 @@ class CombinedCalculatorApp:
                 except ValueError:
                     messagebox.showerror("Ошибка", "Введите корректные размеры произвольного листа")
                     return
-                
                 formats_to_check = [(pw, ph)]
                 selected_paper_repr = f"{pw}×{ph}"
                 current_pw, current_ph = pw, ph
             else:
-                # Используем выбранный стандартный формат
                 selected_paper = self.selected_format.get()
                 current_pw, current_ph = self.paper_formats[selected_paper]
                 formats_to_check = list(self.paper_formats.keys())
                 selected_paper_repr = selected_paper
             
-            # Формируем список вариантов расчета в зависимости от режима сжатия и цветности
             variants = []
             if color == "color":
-                # Базовый вариант (стандартные отступы)
                 variants.append(('color', 25, 10, 4, 0))
                 if shrink:
-                    # Вариант с уменьшенным отступом (22 вместо 25)
                     variants.append(('color', 22, 10, 4, 0))
-                    # Вариант с уменьшенным отступом и уменьшенным припуском (3 вместо 4)
                     variants.append(('color', 22, 10, 3, 0))
-            else:  # bw
-                # Базовый вариант (стандартные отступы, без припусков, без уменьшения)
+            else:
                 variants.append(('bw', 25, 10, 0, 0))
                 if shrink:
-                    # Вариант с уменьшенным отступом (22) и уменьшением высоты на 1 мм
                     variants.append(('bw', 22, 10, 0, 1))
             
-            # Для выбранного формата перебираем все варианты и ориентации, находим лучший
             best_layout = None
             best_final_count = -1
             
             for (c_mode, top_bottom, side, extra, height_red) in variants:
-                # Оригинальная ориентация
                 layout_orig = self.inlay_calculate_layout(
                     current_pw, current_ph, h, w, rotated=False,
                     color_mode=c_mode,
@@ -899,14 +902,12 @@ class CombinedCalculatorApp:
                 layout_orig['original_count'] = layout_orig['total_count']
                 layout_orig['original_width'] = layout_orig['count_width']
                 layout_orig['final_count'] = self.calculate_final_count(layout_orig, ptype)
-                # Сохраняем параметры варианта для отчета
                 layout_orig['variant_params'] = (top_bottom, extra, height_red)
                 
                 if layout_orig['final_count'] > best_final_count:
                     best_final_count = layout_orig['final_count']
                     best_layout = layout_orig
                 
-                # Перевернутая ориентация, если разрешено
                 if self.auto_rotate.get():
                     layout_rot = self.inlay_calculate_layout(
                         current_pw, current_ph, h, w, rotated=True,
@@ -929,7 +930,6 @@ class CombinedCalculatorApp:
                 messagebox.showerror("Ошибка", "Не удалось рассчитать ни одного варианта")
                 return
             
-            # Формируем названия для отчета
             ptype_names = {
                 "односторонняя": "📄 Односторонняя",
                 "двусторонняя_чужой": "🔄 Двусторонняя (ЧУЖОЙ оборот)",
@@ -938,7 +938,6 @@ class CombinedCalculatorApp:
             ptype_name = ptype_names.get(ptype, ptype)
             color_text = "цветная" if color=="color" else "черно-белая"
             
-            # Вывод результатов для выбранного формата
             self.result_textbox.insert(tk.END, "="*90+"\n")
             self.result_textbox.insert(tk.END, f"📋 ВЫБРАННЫЙ ФОРМАТ: {selected_paper_repr}\n")
             self.result_textbox.insert(tk.END, f"🖨️ ТИП ПЕЧАТИ: {ptype_name}\n")
@@ -949,14 +948,13 @@ class CombinedCalculatorApp:
                 self.result_textbox.insert(tk.END, f"📦 РЕЖИМ СЖАТИЯ: Отключен\n")
             self.result_textbox.insert(tk.END, "="*90+"\n\n")
             
-            # --- Детали примененного сжатия ---
             if shrink:
                 if color == "color":
                     if best_layout.get('extra_margin', 4) == 3:
                         self.result_textbox.insert(tk.END, "📌 Режим сжатия: отступ сверху/снизу уменьшен до 22 мм, припуск уменьшен до 3 мм\n")
                     else:
                         self.result_textbox.insert(tk.END, "📌 Режим сжатия: отступ сверху/снизу уменьшен до 22 мм (припуск 4 мм)\n")
-                else:  # bw
+                else:
                     if best_layout.get('height_reduction', 0) > 0:
                         self.result_textbox.insert(tk.END, f"📌 Режим сжатия: отступ сверху/снизу уменьшен до 22 мм, высота вкладыша уменьшена на {best_layout['height_reduction']} мм\n")
                     else:
@@ -1000,9 +998,8 @@ class CombinedCalculatorApp:
             self.result_textbox.insert(tk.END, f"📊 Общий размер: {total_size_info}\n")
             self.result_textbox.insert(tk.END, f"📈 Эффективность: {best_layout['efficiency']:.1f}%\n\n")
             
-            # ===== СРАВНЕНИЕ ВСЕХ ФОРМАТОВ (если включено и не произвольный) =====
+            # СРАВНЕНИЕ ВСЕХ ФОРМАТОВ - ровная таблица
             if self.auto_calculate_all.get() and not self.use_custom.get():
-                # Для сравнения всех форматов нужно для каждого формата также перебрать варианты сжатия и выбрать лучший
                 all_results = []
                 for fmt in formats_to_check:
                     pw, ph = self.paper_formats[fmt]
@@ -1033,32 +1030,46 @@ class CombinedCalculatorApp:
                     self.result_textbox.insert(tk.END, "="*90+"\n")
                     self.result_textbox.insert(tk.END, "📊 СРАВНЕНИЕ ВСЕХ ФОРМАТОВ\n")
                     self.result_textbox.insert(tk.END, "="*90+"\n\n")
-                    self.result_textbox.insert(tk.END, "┌────────────┬──────────────┬──────────────────┬─────────────┬──────────────┐\n")
-                    self.result_textbox.insert(tk.END, "│ Формат     │ Ориентация   │ Расположение     │ Количество  │ Эффективность │\n")
-                    self.result_textbox.insert(tk.END, "├────────────┼──────────────┼──────────────────┼─────────────┼──────────────┤\n")
+                    
+                    col_widths = [12, 14, 16, 11, 12]
+                    header = (f"{'Формат':<{col_widths[0]}} | "
+                              f"{'Ориентация':<{col_widths[1]}} | "
+                              f"{'Расположение':<{col_widths[2]}} | "
+                              f"{'Количество':<{col_widths[3]}} | "
+                              f"{'Эффективность':<{col_widths[4]}}")
+                    separator = "-" * len(header)
+                    self.result_textbox.insert(tk.END, header + "\n")
+                    self.result_textbox.insert(tk.END, separator + "\n")
+                    
                     for r in all_results:
-                        marker = "🏆 " if r==all_results[0] else "   "
-                        fmt_str = f"{marker}{r['paper_format']:<8}"
-                        orient_str = f"{'🔄' if r['rotated'] else '✓'} {r['orientation']:<10}"
-                        if ptype == "двусторонняя_свой" and r['original_width']%2:
-                            new_w = r['original_width']-1
-                            lay_str = f"{r['count_height']}×{new_w:<8}"
+                        marker = "🏆 " if r == all_results[0] else "   "
+                        fmt_str = f"{marker}{r['paper_format']:<{col_widths[0]-2}}"
+                        orient_str = f"{'🔄' if r['rotated'] else '✓'} {r['orientation']:<{col_widths[1]-3}}"
+                        if ptype == "двусторонняя_свой" and r['original_width'] % 2:
+                            new_w = r['original_width'] - 1
+                            lay_str = f"{r['count_height']}×{new_w:<{col_widths[2]-3}}"
                         else:
-                            lay_str = f"{r['count_height']}×{r['count_width']:<8}"
-                        cnt_str = f"{r['final_count']:<11}"
+                            lay_str = f"{r['count_height']}×{r['count_width']:<{col_widths[2]-3}}"
+                        cnt_str = f"{r['final_count']:<{col_widths[3]}}"
                         if r['final_count'] != r['original_count']:
                             cnt_str = f"{r['final_count']} ({r['original_count']})"
                         eff_str = f"{r['efficiency']:.1f}%"
-                        self.result_textbox.insert(tk.END, f"│ {fmt_str} │ {orient_str} │ {lay_str:<16} │ {cnt_str:<11} │ {eff_str:<12} │\n")
-                    self.result_textbox.insert(tk.END, "└────────────┴──────────────┴──────────────────┴─────────────┴──────────────┘\n\n")
+                        row = (f"{fmt_str:<{col_widths[0]}} | "
+                               f"{orient_str:<{col_widths[1]}} | "
+                               f"{lay_str:<{col_widths[2]}} | "
+                               f"{cnt_str:<{col_widths[3]}} | "
+                               f"{eff_str:<{col_widths[4]}}")
+                        self.result_textbox.insert(tk.END, row + "\n")
+                    
+                    self.result_textbox.insert(tk.END, "\n")
                     
                     best = all_results[0]
                     self.result_textbox.insert(tk.END, "✨ " + "★"*86 + " ✨\n")
                     self.result_textbox.insert(tk.END, f"   🏆 ЛУЧШИЙ ФОРМАТ: {best['paper_format']}\n")
                     self.result_textbox.insert(tk.END, f"   📦 Количество: {best['final_count']} вкладышей на листе\n")
                     self.result_textbox.insert(tk.END, f"   🔄 Ориентация: {'ПЕРЕВЕРНУТО' if best['rotated'] else 'ОРИГИНАЛЬНАЯ'} ({best['orientation']})\n")
-                    if ptype == "двусторонняя_свой" and best['original_width']%2:
-                        new_w = best['original_width']-1
+                    if ptype == "двусторонняя_свой" and best['original_width'] % 2:
+                        new_w = best['original_width'] - 1
                         self.result_textbox.insert(tk.END, f"   📐 Расположение: {best['count_height']}×{best['original_width']} → {best['count_height']}×{new_w}\n")
                     else:
                         self.result_textbox.insert(tk.END, f"   📐 Расположение: {best['count_height']}×{best['count_width']}\n")
@@ -1171,7 +1182,6 @@ class CombinedCalculatorApp:
         self.edition_result_label.pack()
         info = ttk.Frame(f)
         info.pack(pady=(20,0))
-       
     
     def edition_calculate(self):
         try:
@@ -1195,20 +1205,15 @@ class CombinedCalculatorApp:
             result = f"📦 Минимальное количество пачек: {packs_int} шт. на лист"
             dobavlenie = packs_int - edition2
             dobavlenie = str(dobavlenie)
-            dobavlenie2 = str(packs_int)
             if edition2 < packs_int:
-            
-             result += f"\n!!! слишком мало пачек, дабавьте минимум +" + dobavlenie + " шт !!!" 
+                result += f"\n!!! слишком мало пачек, дабавьте минимум +{dobavlenie} шт !!!" 
             else:
-             result += f"\nКоличество пачек верное"   
+                result += f"\nКоличество пачек верное"   
 
             result += f"\n\n📦 Тираж: {edition:,} пачек".replace(",", " ")
             result += f"\n📄 Листов: {sheets:,} штук".replace(",", " ")
             result += f"\n✅ Итого : {total_packs:,} пачек".replace(",", " ")
             self.edition_result.set(result)
-
-            
-            
         except ValueError:
             self.edition_result.set("❌ Ошибка! Введите целое число")
         except Exception as e:
