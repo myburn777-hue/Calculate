@@ -204,9 +204,35 @@ class CombinedCalculatorApp:
         self.root.resizable(True, True)
         self.current_tab = 0
         
+        # ===== ГЛОБАЛЬНЫЙ ОБРАБОТЧИК КОПИРОВАНИЯ ПО СКАН-КОДУ (РАБОТАЕТ НА ЛЮБОЙ РАСКЛАДКЕ) =====
+        self.root.bind('<Key>', self.on_global_key_press)
+        
         self.root.after(100, self.process_ai_queue)
         self.root.after(1000, self.delayed_start)
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+    
+    # ===== ОБРАБОТЧИК ГЛОБАЛЬНЫХ КЛАВИШ =====
+    def on_global_key_press(self, event):
+        """Обрабатывает нажатия клавиш, проверяет Ctrl+C (скан-код 67) независимо от раскладки"""
+        # Проверяем, что зажат Ctrl (бит 0x0004) и нажата клавиша 'C' (скан-код 67)
+        if (event.state & 0x0004) and event.keycode == 67:
+            widget = self.root.focus_get()
+            if not widget:
+                return
+            # Пытаемся получить выделенный текст
+            try:
+                if hasattr(widget, 'selection_get'):
+                    selected = widget.selection_get()
+                    if selected:
+                        self.root.clipboard_clear()
+                        self.root.clipboard_append(selected)
+                        self.show_copy_notification()
+                        return "break"
+            except tk.TclError:
+                # Нет выделения
+                pass
+        # Для остальных клавиш пропускаем событие (не блокируем)
+        return None
     
     def process_ai_queue(self):
         """Обработка событий из очереди Illustrator"""
@@ -408,10 +434,8 @@ class CombinedCalculatorApp:
         ttk.Label(result_frame, text="ИТОГОВАЯ ЦЕНА:", font=("Arial",12,"bold")).grid(row=0, column=0, sticky=tk.W)
         self.result_entry = ttk.Entry(result_frame, textvariable=self.result_value, font=("Arial",14,"bold"), foreground="green", state='readonly', width=20, justify='left')
         self.result_entry.grid(row=1, column=0, sticky=tk.W, pady=(5,0))
+        # Контекстное меню для копирования (дополнительно)
         self.create_context_menu(self.result_entry)
-        # Привязываем Ctrl+C только к этому Entry
-        self.result_entry.bind('<Control-c>', self.copy_result)
-        self.result_entry.bind('<Control-C>', self.copy_result)
         
         selection_frame = ttk.LabelFrame(main_frame, text="Выберите пробивку", padding="10")
         selection_frame.grid(row=4, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0,15))
@@ -451,48 +475,47 @@ class CombinedCalculatorApp:
         selection_frame.columnconfigure(3, weight=1)
         self.knife_calculate()
     
-    def copy_result(self, event=None):
-        if self.result_entry:
-            try:
-                selected_text = self.result_entry.selection_get()
-            except tk.TclError:
-                selected_text = self.result_value.get()
-            if selected_text and selected_text not in ["Введите длину ножей", "Длина должна быть > 0", "Ошибка: введите число"]:
-                self.root.clipboard_clear()
-                self.root.clipboard_append(selected_text)
-                self.show_copy_notification()
-        return "break"
-    
     def show_copy_notification(self):
+        """Показывает всплывающее уведомление о копировании"""
         popup = tk.Toplevel(self.root)
         popup.wm_overrideredirect(True)
         popup.configure(bg='lightgreen')
-        x = self.result_entry.winfo_rootx() + 10
-        y = self.result_entry.winfo_rooty() + self.result_entry.winfo_height() + 5
+        # Позиционируем относительно активного виджета
+        widget = self.root.focus_get()
+        if widget and widget.winfo_exists():
+            x = widget.winfo_rootx() + 10
+            y = widget.winfo_rooty() + widget.winfo_height() + 5
+        else:
+            x = self.root.winfo_rootx() + 100
+            y = self.root.winfo_rooty() + 100
         popup.geometry(f"+{x}+{y}")
         label = tk.Label(popup, text="Скопировано!", bg='lightgreen', fg='black', font=("Arial",9))
         label.pack(padx=10, pady=5)
         popup.after(1500, popup.destroy)
     
     def create_context_menu(self, widget):
+        """Создаёт контекстное меню с опцией 'Копировать' для виджета"""
         menu = tk.Menu(widget, tearoff=0)
-        menu.add_command(label="Копировать", command=lambda: self.copy_to_clipboard(widget))
+        menu.add_command(label="Копировать", command=lambda: self.copy_widget_text(widget))
         def show_menu(event): menu.post(event.x_root, event.y_root)
         widget.bind("<Button-3>", show_menu)
     
-    def copy_to_clipboard(self, widget):
-        if self.current_tab == 0:
-            try:
-                selected_text = widget.selection_get()
-                self.root.clipboard_clear()
-                self.root.clipboard_append(selected_text)
-                self.show_copy_notification()
-            except tk.TclError:
-                text = widget.get()
-                if text not in ["Введите длину ножей","Длина должна быть > 0","Ошибка: введите число"]:
-                    self.root.clipboard_clear()
-                    self.root.clipboard.append(text)
-                    self.show_copy_notification()
+    def copy_widget_text(self, widget):
+        """Копирует выделенный текст из виджета или весь текст, если выделения нет"""
+        try:
+            selected = widget.selection_get()
+        except tk.TclError:
+            # Если нет выделения, берём весь текст (для Entry/Text)
+            if isinstance(widget, (tk.Entry, ttk.Entry)):
+                selected = widget.get()
+            elif isinstance(widget, tk.Text):
+                selected = widget.get("1.0", tk.END).rstrip("\n")
+            else:
+                return
+        if selected:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(selected)
+            self.show_copy_notification()
     
     def parse_float(self, value):
         if not value: return 0.0
@@ -632,13 +655,26 @@ class CombinedCalculatorApp:
         self.result_textbox.pack(side="left", fill="both", expand=True)
         right_scrollbar.config(command=self.result_textbox.yview)
         
-        # Горячие клавиши для текстового поля (стандартные Ctrl+C работают, добавляем Ctrl+A)
+        # Горячие клавиши для текстового поля: Ctrl+A для выделения всего
         def select_all_text(event):
             self.result_textbox.tag_add('sel', '1.0', 'end')
             return 'break'
         self.result_textbox.bind('<Control-a>', select_all_text)
         self.result_textbox.bind('<Control-A>', select_all_text)
-        # Ctrl+C стандартно работает, не перехватываем его
+        # Ctrl+C обрабатывается глобально, так что ничего не привязываем
+        
+        # Контекстное меню для текстового поля
+        def copy_from_textbox():
+            try:
+                selected = self.result_textbox.selection_get()
+                self.root.clipboard_clear()
+                self.root.clipboard_append(selected)
+                self.show_copy_notification()
+            except tk.TclError:
+                pass
+        textbox_menu = tk.Menu(self.result_textbox, tearoff=0)
+        textbox_menu.add_command(label="Копировать", command=copy_from_textbox)
+        self.result_textbox.bind("<Button-3>", lambda e: textbox_menu.post(e.x_root, e.y_root))
         
         title_label = ttk.Label(self.left_scrollable, text="Калькулятор размещения вкладышей", font=("Arial",14,"bold"))
         title_label.pack(anchor='w', pady=10, padx=10)
@@ -719,6 +755,10 @@ class CombinedCalculatorApp:
         ttk.Label(summary_frame, text="📏 Общий размер вкладышей:", font=("Arial",9,"bold")).pack(anchor="w", pady=(5,0))
         self.total_size_label = ttk.Label(summary_frame, textvariable=self.total_size_text)
         self.total_size_label.pack(anchor="w", padx=10)
+        
+        # Контекстное меню для ярлыков результатов (если нужно)
+        for lbl in [self.best_paper_label, self.best_layout_label, self.total_size_label]:
+            self.create_context_menu(lbl)
         
         def on_mousewheel(event):
             self.left_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
@@ -1122,7 +1162,10 @@ class CombinedCalculatorApp:
         ttk.Label(f, text="ширина листа №2:").grid(row=3, column=1, padx=5, pady=5, sticky=tk.W)
         ttk.Entry(f, textvariable=self.entry4, width=20).grid(row=4, column=1, padx=5, pady=(0,10), sticky=tk.W+tk.E)
         ttk.Button(f, text="Расчет процента выгоды", command=self.percent_calculate).grid(row=5, column=0, columnspan=2, pady=20)
-        ttk.Label(f, textvariable=self.result_percent, font=("Arial",12,"bold")).grid(row=6, column=0, columnspan=2, pady=10)
+        self.result_percent_label = ttk.Label(f, textvariable=self.result_percent, font=("Arial",12,"bold"))
+        self.result_percent_label.grid(row=6, column=0, columnspan=2, pady=10)
+        # Контекстное меню для результата (чтобы копировать)
+        self.create_context_menu(self.result_percent_label)
     
     def percent_calculate(self):
         try:
@@ -1180,6 +1223,8 @@ class CombinedCalculatorApp:
         res_frame.pack(fill="x", pady=10)
         self.edition_result_label = ttk.Label(res_frame, textvariable=self.edition_result, font=("Arial",12,"bold"), foreground="blue")
         self.edition_result_label.pack()
+        # Контекстное меню для результата
+        self.create_context_menu(self.edition_result_label)
         info = ttk.Frame(f)
         info.pack(pady=(20,0))
     
@@ -1204,9 +1249,8 @@ class CombinedCalculatorApp:
             total_packs = sheets * packs_int
             result = f"📦 Минимальное количество пачек: {packs_int} шт. на лист"
             dobavlenie = packs_int - edition2
-            dobavlenie = str(dobavlenie)
             if edition2 < packs_int:
-                result += f"\n!!! слишком мало пачек, дабавьте минимум +{dobavlenie} шт !!!" 
+                result += f"\n!!! слишком мало пачек, добавьте минимум +{dobavlenie} шт !!!" 
             else:
                 result += f"\nКоличество пачек верное"   
 
