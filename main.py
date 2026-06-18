@@ -285,7 +285,7 @@ def monitor_selection():
 class CombinedCalculatorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Калькулятор by Kirill V15")
+        self.root.title("Калькулятор by Kirill V")
         
         # Размеры для каждой вкладки
         self.tab_sizes = {
