@@ -16,7 +16,7 @@ import json
 # ============================================================
 #  БЛОК АВТООБНОВЛЕНИЯ (настройте под себя)
 # ============================================================
-VERSION = "17.0.0"                     # Текущая версия вашего приложения
+VERSION = "М17.0.2"                     # Текущая версия вашего приложения
 REPO_OWNER = "myburn777-hue"   # Замените на свой логин
 REPO_NAME = "Calculate"    # Замените на название репозитория
 
@@ -28,7 +28,7 @@ def check_for_updates():
         if response.status_code != 200:
             return None
         data = response.json()
-        latest_version = data.get("tag_name", "").lstrip("v")  # если теги вида v1.0.0
+        latest_version = data.get("tag_name", "").lstrip("v")
         if latest_version > VERSION:
             return data
         else:
@@ -37,8 +37,33 @@ def check_for_updates():
         print(f"Ошибка проверки обновлений: {e}")
         return None
 
+def create_updater_script(current_exe, new_exe_path):
+    """Создаёт bat-скрипт, который ждёт, копирует новый exe и перезапускает"""
+    bat_path = os.path.join(os.path.dirname(current_exe), "update_calculator.bat")
+    with open(bat_path, "w", encoding="utf-8") as f:
+        f.write("@echo off\n")
+        f.write("echo Обновление калькулятора...\n")
+        f.write("echo Ожидание завершения приложения...\n")
+        # Ждём 3 секунды, чтобы старый процесс успел завершиться
+        f.write("timeout /t 3 /nobreak >nul\n")
+        # Копируем новый файл поверх старого
+        f.write(f'copy /Y "{new_exe_path}" "{current_exe}"\n')
+        # Удаляем временный файл
+        f.write(f'del "{new_exe_path}"\n')
+        # Запускаем обновлённое приложение
+        f.write(f'start "" "{current_exe}"\n')
+        # Удаляем сам скрипт через пару секунд
+        f.write("timeout /t 2 /nobreak >nul\n")
+        f.write("del \"%~f0\"\n")
+    return bat_path
+
 def download_and_update(release_data):
-    """Скачивает новый exe и запускает апдейтер"""
+    """Скачивает новый exe в папку с приложением и запускает апдейтер"""
+    if not getattr(sys, 'frozen', False):
+        messagebox.showinfo("Тестовый режим", "Обновление доступно, но вы запущены как скрипт.\nСоберите приложение в exe.")
+        return
+
+    # Ищем .exe в релизе
     assets = release_data.get("assets", [])
     exe_asset = None
     for asset in assets:
@@ -49,36 +74,37 @@ def download_and_update(release_data):
         messagebox.showerror("Ошибка", "В релизе не найден .exe файл")
         return
 
-    # Скачиваем во временную папку
-    download_url = exe_asset["browser_download_url"]
-    temp_dir = tempfile.gettempdir()
-    new_exe_path = os.path.join(temp_dir, "calculator_new.exe")
+    current_exe = sys.executable
+    current_dir = os.path.dirname(current_exe)
+    # Проверяем, есть ли права на запись в папку
+    if not os.access(current_dir, os.W_OK):
+        messagebox.showerror("Ошибка", "Нет прав на запись в папку с приложением.\nПопробуйте запустить от имени администратора.")
+        return
+
+    # Новый файл скачиваем с расширением .new
+    new_exe_path = os.path.join(current_dir, os.path.basename(current_exe) + ".new")
 
     try:
-        r = requests.get(download_url, stream=True)
+        # Скачивание с прогрессом (без индикатора, но можно добавить)
+        r = requests.get(exe_asset["browser_download_url"], stream=True)
+        total_size = int(r.headers.get('content-length', 0))
+        downloaded = 0
         with open(new_exe_path, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    # Можно выводить прогресс в консоль
+                    # print(f"\rЗагрузка: {downloaded / total_size * 100:.1f}%", end="")
     except Exception as e:
         messagebox.showerror("Ошибка загрузки", f"Не удалось скачать обновление:\n{e}")
         return
 
-    # Если приложение запущено не как exe (скрипт), не можем обновить
-    if not getattr(sys, 'frozen', False):
-        messagebox.showinfo("Тестовый режим", "Обновление доступно, но вы запущены как скрипт.\nСоберите приложение в exe и повторите.")
-        return
-
-    current_exe = sys.executable
-    # Создаём .bat-скрипт для замены и перезапуска
-    bat_path = os.path.join(temp_dir, "update_calculator.bat")
-    with open(bat_path, "w") as f:
-        f.write("@echo off\n")
-        f.write("timeout /t 2 /nobreak >nul\n")          # ждём 2 секунды
-        f.write(f'copy /Y "{new_exe_path}" "{current_exe}"\n')
-        f.write(f'start "" "{current_exe}"\n')
-        f.write("del \"%~f0\"\n")                        # удаляем bat-файл
+    # Создаём bat-скрипт
+    bat_path = create_updater_script(current_exe, new_exe_path)
+    # Запускаем апдейтер и завершаем приложение
     subprocess.Popen(bat_path, shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
-    sys.exit(0)  # завершаем текущее приложение
+    sys.exit(0)
 
 def check_update_at_startup(self):
     """Вызывается при старте приложения"""
@@ -86,13 +112,13 @@ def check_update_at_startup(self):
     if data:
         answer = messagebox.askyesno(
             "Новая версия",
-            f"Доступна версия {data['tag_name']}\nХотите обновить?"
+            f"Доступна версия {data['tag_name']}\nХотите обновить сейчас?"
         )
         if answer:
             download_and_update(data)
 
 # ============================================================
-#  ОСТАЛЬНАЯ ЧАСТЬ ПРОГРАММЫ (ваш код)
+#  ОСТАЛЬНАЯ ЧАСТЬ ПРОГРАММЫ (ваш код, без изменений, кроме интеграции обновления)
 # ============================================================
 
 def calculate_item_length(item):
@@ -259,7 +285,7 @@ def monitor_selection():
 class CombinedCalculatorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Калькулятор by Kirill")
+        self.root.title("Калькулятор by Kirill V15")
         
         # Размеры для каждой вкладки
         self.tab_sizes = {
@@ -1350,6 +1376,6 @@ def main():
 
 if __name__ == "__main__":
     print("="*90)
-    print("Калькулятор by Kirill V14")
+    print("Калькулятор by Kirill V")
     print("="*90)
     main()
